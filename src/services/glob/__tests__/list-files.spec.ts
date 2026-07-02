@@ -11,7 +11,7 @@ vi.mock("vscode", () => ({
 }))
 
 vi.mock("../../ripgrep", () => ({
-	getBinPath: vi.fn().mockResolvedValue("/mock/path/to/rg"),
+	getBinPath: vi.fn(),
 }))
 
 vi.mock("../list-files", async () => {
@@ -53,6 +53,7 @@ vi.mock("fs", () => ({
 
 // Import fs to set up mocks
 import * as fs from "fs"
+import { getBinPath } from "../../ripgrep"
 
 vi.mock("child_process", () => ({
 	spawn: vi.fn(),
@@ -65,6 +66,35 @@ vi.mock("../../path", () => ({
 describe("list-files symlink support", () => {
 	beforeEach(() => {
 		vi.clearAllMocks()
+		vi.mocked(getBinPath).mockResolvedValue("/mock/path/to/rg")
+	})
+
+	it("should fall back to filesystem scanning when ripgrep is unavailable", async () => {
+		vi.mocked(getBinPath).mockResolvedValue(undefined)
+		const mockReaddir = vi.mocked(fs.promises.readdir)
+		mockReaddir
+			.mockResolvedValueOnce([
+				{ name: "src", isDirectory: () => true, isSymbolicLink: () => false, isFile: () => false } as any,
+				{ name: "README.md", isDirectory: () => false, isSymbolicLink: () => false, isFile: () => true } as any,
+			])
+			.mockResolvedValueOnce([
+				{ name: "index.ts", isDirectory: () => false, isSymbolicLink: () => false, isFile: () => true } as any,
+			])
+			.mockResolvedValueOnce([
+				{ name: "src", isDirectory: () => true, isSymbolicLink: () => false, isFile: () => false } as any,
+				{ name: "README.md", isDirectory: () => false, isSymbolicLink: () => false, isFile: () => true } as any,
+			])
+			.mockResolvedValueOnce([
+				{ name: "index.ts", isDirectory: () => false, isSymbolicLink: () => false, isFile: () => true } as any,
+			])
+
+		const [results, limitReached] = await listFiles("/test/project", true, 10)
+
+		expect(childProcess.spawn).not.toHaveBeenCalled()
+		expect(limitReached).toBe(false)
+		expect(results.some((item) => item.endsWith("src/") || item.endsWith("src\\"))).toBe(true)
+		expect(results.some((item) => item.endsWith("README.md"))).toBe(true)
+		expect(results.some((item) => item.endsWith(path.join("src", "index.ts")))).toBe(true)
 	})
 
 	it("should include --follow flag in ripgrep arguments", async () => {

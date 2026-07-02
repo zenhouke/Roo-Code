@@ -4183,6 +4183,9 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 
 			// Race between the first chunk and the abort signal
 			const firstChunkPromise = iterator.next()
+			const apiRequestTimeoutSeconds =
+				vscode.workspace.getConfiguration(Package.name).get<number>("apiRequestTimeout") ?? 600
+			let apiRequestTimeout: NodeJS.Timeout | undefined
 			const abortPromise = new Promise<never>((_, reject) => {
 				if (abortSignal.aborted) {
 					reject(new Error("Request cancelled by user"))
@@ -4192,8 +4195,28 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 					})
 				}
 			})
+			const timeoutPromise =
+				apiRequestTimeoutSeconds > 0
+					? new Promise<never>((_, reject) => {
+							apiRequestTimeout = setTimeout(() => {
+								const timeoutError = new Error(
+									`API request timed out after ${apiRequestTimeoutSeconds} second${
+										apiRequestTimeoutSeconds === 1 ? "" : "s"
+									} while waiting for the first response chunk.`,
+								)
+								reject(timeoutError)
+								this.currentRequestAbortController?.abort()
+							}, apiRequestTimeoutSeconds * 1000)
+						})
+					: undefined
 
-			const firstChunk = await Promise.race([firstChunkPromise, abortPromise])
+			const firstChunk = await Promise.race(
+				timeoutPromise ? [firstChunkPromise, abortPromise, timeoutPromise] : [firstChunkPromise, abortPromise],
+			).finally(() => {
+				if (apiRequestTimeout) {
+					clearTimeout(apiRequestTimeout)
+				}
+			})
 			yield firstChunk.value
 			this.isWaitingForFirstChunk = false
 		} catch (error) {

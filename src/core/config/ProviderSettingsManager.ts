@@ -28,6 +28,7 @@ export const providerProfilesSchema = z.object({
 	currentApiConfigName: z.string(),
 	apiConfigs: z.record(z.string(), providerSettingsWithIdSchema),
 	modeApiConfigs: z.record(z.string(), z.string()).optional(),
+	updatedAt: z.number().optional(),
 	migrations: z
 		.object({
 			rateLimitSecondsMigrated: z.boolean().optional(),
@@ -654,7 +655,10 @@ export class ProviderSettingsManager {
 
 	private async store(providerProfiles: ProviderProfiles) {
 		try {
-			await this.context.secrets.store(this.secretsKey, JSON.stringify(providerProfiles, null, 2))
+			await this.context.secrets.store(
+				this.secretsKey,
+				JSON.stringify({ ...providerProfiles, updatedAt: Date.now() }, null, 2),
+			)
 		} catch (error) {
 			throw new Error(`Failed to write provider profiles to secrets: ${error}`)
 		}

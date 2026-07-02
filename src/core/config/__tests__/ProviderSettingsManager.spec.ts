@@ -339,7 +339,7 @@ describe("ProviderSettingsManager", () => {
 			}
 
 			expect(mockSecrets.store.mock.calls[0][0]).toEqual("roo_cline_config_api_config")
-			expect(storedConfig).toEqual(expectedConfig)
+			expect(storedConfig).toEqual({ ...expectedConfig, updatedAt: expect.any(Number) })
 		})
 
 		it("should only save provider relevant settings", async () => {
@@ -389,7 +389,7 @@ describe("ProviderSettingsManager", () => {
 			}
 
 			expect(mockSecrets.store.mock.calls[0][0]).toEqual("roo_cline_config_api_config")
-			expect(storedConfig).toEqual(expectedConfig)
+			expect(storedConfig).toEqual({ ...expectedConfig, updatedAt: expect.any(Number) })
 		})
 
 		it("should update existing config", async () => {
@@ -434,7 +434,7 @@ describe("ProviderSettingsManager", () => {
 			expect(mockSecrets.store.mock.calls[mockSecrets.store.mock.calls.length - 1][0]).toEqual(
 				"roo_cline_config_api_config",
 			)
-			expect(storedConfig).toEqual(expectedConfig)
+			expect(storedConfig).toEqual({ ...expectedConfig, updatedAt: expect.any(Number) })
 		})
 
 		it("should throw error if secrets storage fails", async () => {

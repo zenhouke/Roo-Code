@@ -78,6 +78,7 @@ import { forceFullModelDetailsLoad, hasLoadedFullDetails } from "../../api/provi
 
 import { ContextProxy } from "../config/ContextProxy"
 import { ProviderSettingsManager } from "../config/ProviderSettingsManager"
+import { syncProviderProfilesToGlobalState } from "../config/ProviderSettingsSync"
 import { CustomModesManager } from "../config/CustomModesManager"
 import { Task } from "../task/Task"
 
@@ -1433,6 +1434,10 @@ export class ClineProvider
 			}
 
 			await this.postStateToWebview()
+			await syncProviderProfilesToGlobalState({
+				context: this.context,
+				providerSettingsManager: this.providerSettingsManager,
+			})
 			return id
 		} catch (error) {
 			this.log(

@@ -43,13 +43,16 @@ export async function listFiles(dirPath: string, recursive: boolean, limit: numb
 		return specialResult
 	}
 
+	const ignoreInstance = await createIgnoreInstance(dirPath)
+
 	// Get ripgrep path
 	const rgPath = await getRipgrepPath()
 
 	if (!recursive) {
 		// For non-recursive, use the existing approach
-		const files = await listFilesWithRipgrep(rgPath, dirPath, false, limit)
-		const ignoreInstance = await createIgnoreInstance(dirPath)
+		const files = rgPath
+			? await listFilesWithRipgrep(rgPath, dirPath, false, limit)
+			: await listFilesWithFilesystem(dirPath, false, ignoreInstance, limit)
 		// Calculate remaining limit for directories
 		const remainingLimit = Math.max(0, limit - files.length)
 		const directories = await listFilteredDirectories(dirPath, false, ignoreInstance, remainingLimit)
@@ -57,8 +60,9 @@ export async function listFiles(dirPath: string, recursive: boolean, limit: numb
 	}
 
 	// For recursive mode, use the original approach but ensure first-level directories are included
-	const files = await listFilesWithRipgrep(rgPath, dirPath, true, limit)
-	const ignoreInstance = await createIgnoreInstance(dirPath)
+	const files = rgPath
+		? await listFilesWithRipgrep(rgPath, dirPath, true, limit)
+		: await listFilesWithFilesystem(dirPath, true, ignoreInstance, limit)
 	// Calculate remaining limit for directories
 	const remainingLimit = Math.max(0, limit - files.length)
 	const directories = await listFilteredDirectories(dirPath, true, ignoreInstance, remainingLimit)
@@ -183,12 +187,12 @@ async function handleSpecialDirectories(dirPath: string): Promise<[string[], boo
 /**
  * Get the path to the ripgrep binary
  */
-async function getRipgrepPath(): Promise<string> {
+async function getRipgrepPath(): Promise<string | undefined> {
 	const vscodeAppRoot = vscode.env.appRoot
 	const rgPath = await getBinPath(vscodeAppRoot)
 
 	if (!rgPath) {
-		throw new Error("Could not find ripgrep binary")
+		console.warn("Could not find ripgrep binary; falling back to filesystem scanning")
 	}
 
 	return rgPath
@@ -211,6 +215,100 @@ async function listFilesWithRipgrep(
 	// Resolve dirPath once here for the mapping operation
 	const absolutePath = path.resolve(dirPath)
 	return relativePaths.map((relativePath) => path.resolve(absolutePath, relativePath))
+}
+
+async function listFilesWithFilesystem(
+	dirPath: string,
+	recursive: boolean,
+	ignoreInstance: ReturnType<typeof ignore>,
+	limit: number,
+): Promise<string[]> {
+	const absolutePath = path.resolve(dirPath)
+	const files: string[] = []
+	const isExplicitHiddenTarget = path.basename(absolutePath).startsWith(".")
+
+	const initialContext: ScanContext = {
+		isTargetDir: isExplicitHiddenTarget,
+		insideExplicitHiddenTarget: isExplicitHiddenTarget,
+		basePath: dirPath,
+		ignoreInstance,
+	}
+
+	async function scanDirectory(currentPath: string, context: ScanContext): Promise<boolean> {
+		if (files.length >= limit) {
+			return true
+		}
+
+		let entries: fs.Dirent[]
+		try {
+			entries = await fs.promises.readdir(currentPath, { withFileTypes: true })
+		} catch (err) {
+			console.warn(`Could not read directory ${currentPath}: ${err}`)
+			return false
+		}
+
+		for (const entry of entries) {
+			if (files.length >= limit) {
+				return true
+			}
+
+			const fullPath = path.join(currentPath, entry.name)
+
+			if (entry.isFile()) {
+				const relativePath = path.relative(dirPath, fullPath).replace(/\\/g, "/")
+				if (!ignoreInstance.ignores(relativePath)) {
+					files.push(fullPath)
+				}
+				continue
+			}
+
+			if (!entry.isDirectory() || entry.isSymbolicLink()) {
+				continue
+			}
+
+			if (!recursive) {
+				continue
+			}
+
+			const subdirContext: ScanContext = {
+				...context,
+				isTargetDir: false,
+			}
+
+			if (!shouldIncludeDirectory(entry.name, fullPath, subdirContext)) {
+				continue
+			}
+
+			const isHiddenDir = entry.name.startsWith(".")
+			const shouldRecurse =
+				(context.insideExplicitHiddenTarget
+					? !CRITICAL_IGNORE_PATTERNS.has(entry.name)
+					: !isDirectoryExplicitlyIgnored(entry.name)) &&
+				!(
+					isHiddenDir &&
+					DIRS_TO_IGNORE.includes(".*") &&
+					!context.isTargetDir &&
+					!context.insideExplicitHiddenTarget
+				)
+
+			if (shouldRecurse) {
+				const limitReached = await scanDirectory(fullPath, {
+					...context,
+					isTargetDir: false,
+					insideExplicitHiddenTarget:
+						context.insideExplicitHiddenTarget || (isHiddenDir && context.isTargetDir),
+				})
+				if (limitReached) {
+					return true
+				}
+			}
+		}
+
+		return false
+	}
+
+	await scanDirectory(absolutePath, initialContext)
+	return files
 }
 
 /**

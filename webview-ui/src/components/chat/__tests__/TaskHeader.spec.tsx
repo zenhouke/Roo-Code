@@ -267,5 +267,12 @@ describe("TaskHeader", () => {
 			// Should show 0% when available input space is 0
 			expect(screen.getByText("0%")).toBeInTheDocument()
 		})
+
+		it("should cap displayed percentage at 100 when context tokens exceed available input space", () => {
+			renderTaskHeader({ contextTokens: 10_889_600 })
+
+			expect(screen.getByText("100%")).toBeInTheDocument()
+			expect(screen.queryByText("1361200%")).not.toBeInTheDocument()
+		})
 	})
 })

@@ -742,6 +742,54 @@ describe("Cline", () => {
 				await task.catch(() => {})
 			})
 
+			it("times out while waiting for the first API stream chunk", async () => {
+				const timeoutSeconds = 0.01
+				const getConfigurationSpy = vi.spyOn(vscode.workspace, "getConfiguration").mockReturnValue({
+					get: vi.fn((key: string, defaultValue: unknown) =>
+						key === "apiRequestTimeout" ? timeoutSeconds : defaultValue,
+					),
+				} as any)
+
+				const cline = new Task({
+					provider: mockProvider,
+					apiConfiguration: mockApiConfig,
+					task: "test task",
+					startTask: false,
+				})
+
+				const neverResolvingStream = {
+					async next() {
+						return new Promise<IteratorResult<ApiStreamChunk>>(() => {})
+					},
+					async return() {
+						return { done: true, value: undefined }
+					},
+					async throw(e: unknown) {
+						throw e
+					},
+					async [Symbol.asyncDispose]() {
+						// Cleanup
+					},
+					[Symbol.asyncIterator]() {
+						return this
+					},
+				} as AsyncGenerator<ApiStreamChunk>
+
+				vi.spyOn(cline.api, "createMessage").mockReturnValue(neverResolvingStream)
+				mockProvider.getState = vi.fn().mockResolvedValue({})
+
+				const askSpy = vi.spyOn(cline, "ask").mockResolvedValue({
+					response: "noButtonClicked" as any,
+				})
+
+				await expect(cline.attemptApiRequest(0).next()).rejects.toThrow("API request failed")
+				expect(askSpy).toHaveBeenCalledWith(
+					"api_req_failed",
+					expect.stringContaining(`timed out after ${timeoutSeconds} seconds`),
+				)
+				expect(getConfigurationSpy).toHaveBeenCalledWith("roo-cline")
+			})
+
 			it.skip("should not apply retry delay twice", async () => {
 				const [cline, task] = Task.create({
 					provider: mockProvider,

@@ -50,6 +50,7 @@ rel/path/to/helper.ts
 
 const isWindows = process.platform.startsWith("win")
 const binName = isWindows ? "rg.exe" : "rg"
+let extensionRootPath: string | undefined
 
 interface SearchFileResult {
 	file: string
@@ -80,19 +81,33 @@ export function truncateLine(line: string, maxLength: number = MAX_LINE_LENGTH):
 	return line.length > maxLength ? line.substring(0, maxLength) + " [truncated...]" : line
 }
 /**
- * Get the path to the ripgrep binary within the VSCode installation
+ * Set the extension installation root, used to locate bundled binaries in packaged builds.
+ */
+export function setExtensionRootPath(extensionPath: string): void {
+	extensionRootPath = extensionPath
+}
+
+/**
+ * Get the path to the ripgrep binary bundled with the extension or within the VSCode installation.
  */
 export async function getBinPath(vscodeAppRoot: string): Promise<string | undefined> {
-	const checkPath = async (pkgFolder: string) => {
-		const fullPath = path.join(vscodeAppRoot, pkgFolder, binName)
+	const checkPath = async (rootPath: string | undefined, pkgFolder: string) => {
+		if (!rootPath) {
+			return undefined
+		}
+
+		const fullPath = path.join(rootPath, pkgFolder, binName)
 		return (await fileExistsAtPath(fullPath)) ? fullPath : undefined
 	}
 
 	return (
-		(await checkPath("node_modules/@vscode/ripgrep/bin/")) ||
-		(await checkPath("node_modules/vscode-ripgrep/bin")) ||
-		(await checkPath("node_modules.asar.unpacked/vscode-ripgrep/bin/")) ||
-		(await checkPath("node_modules.asar.unpacked/@vscode/ripgrep/bin/"))
+		(await checkPath(extensionRootPath, "dist/bin/ripgrep")) ||
+		(await checkPath(extensionRootPath, "node_modules/@vscode/ripgrep/bin/")) ||
+		(await checkPath(extensionRootPath, "node_modules/vscode-ripgrep/bin")) ||
+		(await checkPath(vscodeAppRoot, "node_modules/@vscode/ripgrep/bin/")) ||
+		(await checkPath(vscodeAppRoot, "node_modules/vscode-ripgrep/bin")) ||
+		(await checkPath(vscodeAppRoot, "node_modules.asar.unpacked/vscode-ripgrep/bin/")) ||
+		(await checkPath(vscodeAppRoot, "node_modules.asar.unpacked/@vscode/ripgrep/bin/"))
 	)
 }
 

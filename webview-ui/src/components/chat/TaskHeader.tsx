@@ -77,6 +77,19 @@ const TaskHeader = ({
 		[model, modelId, apiConfiguration],
 	)
 	const reservedForOutput = maxTokens || 0
+	const contextWindowPercentage = useMemo(() => {
+		const availableInputSpace = contextWindow - reservedForOutput
+		if (availableInputSpace <= 0) {
+			return 0
+		}
+
+		const rawPercentage = Math.round(((contextTokens || 0) / availableInputSpace) * 100)
+		if (!Number.isFinite(rawPercentage)) {
+			return 0
+		}
+
+		return Math.max(0, Math.min(100, rawPercentage))
+	}, [contextTokens, contextWindow, reservedForOutput])
 
 	const condenseButton = (
 		<LucideIconButton
@@ -220,21 +233,8 @@ const TaskHeader = ({
 								side="top"
 								sideOffset={8}>
 								<span className="flex items-center gap-1.5">
-									{(() => {
-										// Calculate percentage of available input space used
-										// Available input space = context window - reserved for output
-										const availableInputSpace = contextWindow - reservedForOutput
-										const percentage =
-											availableInputSpace > 0
-												? Math.round(((contextTokens || 0) / availableInputSpace) * 100)
-												: 0
-										return (
-											<>
-												<CircularProgress percentage={percentage} />
-												<span>{percentage}%</span>
-											</>
-										)
-									})()}
+									<CircularProgress percentage={contextWindowPercentage} />
+									<span>{contextWindowPercentage}%</span>
 								</span>
 							</StandardTooltip>
 							{!!totalCost && (

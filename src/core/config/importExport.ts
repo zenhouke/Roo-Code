@@ -16,6 +16,7 @@ import {
 import { ProviderSettingsManager, providerProfilesSchema } from "./ProviderSettingsManager"
 import { ContextProxy } from "./ContextProxy"
 import { CustomModesManager } from "./CustomModesManager"
+import { syncProviderProfilesToGlobalState } from "./ProviderSettingsSync"
 import { resolveDefaultSaveUri, saveLastExportPath } from "../../utils/export"
 import { t } from "../../i18n"
 
@@ -31,6 +32,7 @@ type ExportOptions = {
 }
 type ImportWithProviderOptions = ImportOptions & {
 	provider: {
+		context?: vscode.ExtensionContext
 		settingsImportedAt?: number
 		postStateToWebview: () => Promise<void>
 	}
@@ -315,6 +317,13 @@ export const importSettingsWithFeedback = async (
 	}
 
 	if (result.success) {
+		if (provider.context) {
+			await syncProviderProfilesToGlobalState({
+				context: provider.context,
+				providerSettingsManager,
+			})
+		}
+
 		provider.settingsImportedAt = Date.now()
 		await provider.postStateToWebview()
 

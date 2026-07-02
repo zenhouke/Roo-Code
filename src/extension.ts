@@ -21,11 +21,13 @@ import { customToolRegistry } from "@roo-code/core"
 
 import "./utils/path" // Necessary to have access to String.prototype.toPosix.
 import { initializeNetworkProxy } from "./utils/networkProxy"
+import { setExtensionRootPath as setRipgrepExtensionRootPath } from "./services/ripgrep"
 
 import { Package } from "./shared/package"
 import { formatLanguage } from "./shared/language"
 import { ContextProxy } from "./core/config/ContextProxy"
 import { ClineProvider } from "./core/webview/ClineProvider"
+import { initializeProviderSettingsSync } from "./core/config/ProviderSettingsSync"
 import { DIFF_VIEW_URI_SCHEME } from "./integrations/editor/DiffViewProvider"
 import { TerminalRegistry } from "./integrations/terminal/TerminalRegistry"
 import { openAiCodexOAuthManager } from "./integrations/openai-codex/oauth"
@@ -120,6 +122,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
 	// Set extension path for custom tool registry to find bundled esbuild
 	customToolRegistry.setExtensionPath(context.extensionPath)
+	setRipgrepExtensionRootPath(context.extensionPath)
 
 	// Migrate old settings to new
 	await migrateSettings(context, outputChannel)
@@ -187,6 +190,20 @@ export async function activate(context: vscode.ExtensionContext) {
 	} catch (error) {
 		outputChannel.appendLine(
 			`[AutoImport] Error during auto-import: ${error instanceof Error ? error.message : String(error)}`,
+		)
+	}
+
+	try {
+		await initializeProviderSettingsSync(outputChannel, {
+			context,
+			providerSettingsManager: provider.providerSettingsManager,
+			contextProxy: provider.contextProxy,
+		})
+	} catch (error) {
+		outputChannel.appendLine(
+			`[ProviderSettingsSync] Error during provider settings sync: ${
+				error instanceof Error ? error.message : String(error)
+			}`,
 		)
 	}
 
