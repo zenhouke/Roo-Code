@@ -291,6 +291,9 @@ const openAiCodexSchema = apiModelIdProviderModelSchema.extend({
 const openAiNativeSchema = apiModelIdProviderModelSchema.extend({
 	openAiNativeApiKey: z.string().optional(),
 	openAiNativeBaseUrl: z.string().optional(),
+	openAiNativeCustomModelInfo: modelInfoSchema.nullish(),
+	openAiNativeHeaders: z.record(z.string(), z.string()).optional(),
+	openAiNativeStreamingEnabled: z.boolean().optional(),
 	// OpenAI Responses API service tier for openai-native provider only.
 	// UI should only expose this when the selected model supports flex/priority.
 	openAiNativeServiceTier: serviceTierSchema.optional(),

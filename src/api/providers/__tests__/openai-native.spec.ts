@@ -131,6 +131,97 @@ describe("OpenAiNativeHandler", () => {
 			expect(textChunks[1].text).toBe(" response")
 		})
 
+		it("should use fetch directly for custom base URLs and avoid double /v1 segments", async () => {
+			const mockFetch = vitest.fn().mockResolvedValue({
+				ok: true,
+				body: new ReadableStream({
+					start(controller) {
+						controller.enqueue(
+							new TextEncoder().encode('data: {"type":"response.text.delta","delta":"Custom"}\n\n'),
+						)
+						controller.enqueue(new TextEncoder().encode("data: [DONE]\n\n"))
+						controller.close()
+					},
+				}),
+			})
+			global.fetch = mockFetch as any
+			mockResponsesCreate.mockClear()
+
+			handler = new OpenAiNativeHandler({
+				...mockOptions,
+				openAiNativeBaseUrl: "https://tokenflux.dev/v1",
+			})
+
+			const chunks: any[] = []
+			for await (const chunk of handler.createMessage(systemPrompt, messages)) {
+				chunks.push(chunk)
+			}
+
+			expect(mockResponsesCreate).not.toHaveBeenCalled()
+			expect(mockFetch).toHaveBeenCalledWith(
+				"https://tokenflux.dev/v1/responses",
+				expect.objectContaining({
+					method: "POST",
+					headers: expect.objectContaining({
+						"Content-Type": "application/json",
+						Accept: "text/event-stream",
+						Authorization: "Bearer test-api-key",
+						"User-Agent": expect.stringContaining("Codex Desktop/"),
+					}),
+				}),
+			)
+			const requestHeaders = mockFetch.mock.calls[0][1].headers
+			expect(requestHeaders).not.toHaveProperty("originator")
+			expect(requestHeaders).not.toHaveProperty("session_id")
+			expect(chunks.filter((chunk) => chunk.type === "text")[0].text).toBe("Custom")
+		})
+
+		it("should apply custom headers, streaming, and max token settings for custom base URLs", async () => {
+			const mockFetch = vitest.fn().mockResolvedValue({
+				ok: true,
+				body: new ReadableStream({
+					start(controller) {
+						controller.enqueue(
+							new TextEncoder().encode('data: {"type":"response.text.delta","delta":"OK"}\n\n'),
+						)
+						controller.enqueue(new TextEncoder().encode("data: [DONE]\n\n"))
+						controller.close()
+					},
+				}),
+			})
+			global.fetch = mockFetch as any
+			mockResponsesCreate.mockClear()
+
+			handler = new OpenAiNativeHandler({
+				...mockOptions,
+				openAiNativeBaseUrl: "https://tokenflux.dev/v1",
+				openAiNativeHeaders: {
+					"User-Agent": "Custom Client/1.0",
+					"X-Tokenflux-Client": "codex-desktop",
+				},
+				openAiNativeStreamingEnabled: false,
+				includeMaxTokens: false,
+				openAiNativeCustomModelInfo: {
+					maxTokens: 12345,
+					contextWindow: 23456,
+					supportsPromptCache: false,
+				},
+			})
+
+			for await (const _chunk of handler.createMessage(systemPrompt, messages)) {
+				// consume stream
+			}
+
+			const request = mockFetch.mock.calls[0][1]
+			expect(request.headers).toMatchObject({
+				"User-Agent": "Custom Client/1.0",
+				"X-Tokenflux-Client": "codex-desktop",
+			})
+			const body = JSON.parse(request.body)
+			expect(body.stream).toBe(false)
+			expect(body.max_output_tokens).toBeUndefined()
+		})
+
 		it("should handle API errors", async () => {
 			// Mock fetch to return error
 			const mockFetch = vitest.fn().mockResolvedValue({
@@ -225,6 +316,30 @@ describe("OpenAiNativeHandler", () => {
 			expect(modelInfo.info.contextWindow).toBe(1047576)
 		})
 
+		it("should use custom OpenAI Native model info when configured", () => {
+			const customModelHandler = new OpenAiNativeHandler({
+				...mockOptions,
+				apiModelId: "gpt-5.5",
+				openAiNativeCustomModelInfo: {
+					maxTokens: 12345,
+					contextWindow: 23456,
+					supportsImages: false,
+					supportsPromptCache: true,
+					inputPrice: 1.25,
+					outputPrice: 9.5,
+					cacheReadsPrice: 0.25,
+					cacheWritesPrice: 1,
+				},
+			})
+
+			const modelInfo = customModelHandler.getModel()
+			expect(modelInfo.id).toBe("gpt-5.5")
+			expect(modelInfo.info.maxTokens).toBe(12345)
+			expect(modelInfo.info.contextWindow).toBe(23456)
+			expect(modelInfo.info.supportsImages).toBe(false)
+			expect(modelInfo.info.inputPrice).toBe(1.25)
+		})
+
 		it("should return GPT-5.3 Codex model info when selected", () => {
 			const codexHandler = new OpenAiNativeHandler({
 				...mockOptions,
@@ -290,6 +405,18 @@ describe("OpenAiNativeHandler", () => {
 					outputPrice: 0.625,
 				}),
 			])
+		})
+
+		it("should preserve dynamically fetched model IDs that are not in the static model table", () => {
+			const dynamicModelHandler = new OpenAiNativeHandler({
+				...mockOptions,
+				apiModelId: "gpt-5.5",
+			})
+
+			const modelInfo = dynamicModelHandler.getModel()
+			expect(modelInfo.id).toBe("gpt-5.5")
+			expect(modelInfo.info).toBeDefined()
+			expect(modelInfo.info.contextWindow).toBeGreaterThan(0)
 		})
 
 		it("should return GPT-5.3 Chat model info when selected", () => {

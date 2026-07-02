@@ -568,3 +568,8 @@ export async function getOpenAiModels(baseUrl?: string, apiKey?: string, openAiH
 		return []
 	}
 }
+
+export async function getOpenAiNativeModels(baseUrl?: string, apiKey?: string) {
+	const normalizedBaseUrl = baseUrl?.trim() || "https://api.openai.com/v1"
+	return getOpenAiModels(normalizedBaseUrl, apiKey)
+}

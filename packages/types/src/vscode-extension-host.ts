@@ -37,6 +37,7 @@ export interface ExtensionMessage {
 		| "listApiConfig"
 		| "routerModels"
 		| "openAiModels"
+		| "openAiNativeModels"
 		| "ollamaModels"
 		| "lmStudioModels"
 		| "vsCodeLmModels"
@@ -124,6 +125,7 @@ export interface ExtensionMessage {
 	clineMessage?: ClineMessage
 	routerModels?: RouterModels
 	openAiModels?: string[]
+	openAiNativeModels?: string[]
 	ollamaModels?: ModelRecord
 	lmStudioModels?: ModelRecord
 	vsCodeLmModels?: { vendor?: string; family?: string; version?: string; id?: string }[]
@@ -400,6 +402,7 @@ export interface WebviewMessage {
 		| "flushRouterModels"
 		| "requestRouterModels"
 		| "requestOpenAiModels"
+		| "requestOpenAiNativeModels"
 		| "requestOllamaModels"
 		| "requestLmStudioModels"
 		| "requestVsCodeLmModels"

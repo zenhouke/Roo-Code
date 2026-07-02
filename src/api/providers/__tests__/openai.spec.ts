@@ -1,6 +1,6 @@
 // npx vitest run api/providers/__tests__/openai.spec.ts
 
-import { OpenAiHandler, getOpenAiModels } from "../openai"
+import { OpenAiHandler, getOpenAiModels, getOpenAiNativeModels } from "../openai"
 import { ApiHandlerOptions } from "../../../shared/api"
 import { Anthropic } from "@anthropic-ai/sdk"
 import OpenAI from "openai"
@@ -1278,5 +1278,46 @@ describe("getOpenAiModels", () => {
 		const result = await getOpenAiModels("https://api.example.com/v1", "test-key")
 
 		expect(result).toEqual(["gpt-4", "gpt-3.5-turbo"])
+	})
+})
+
+describe("getOpenAiNativeModels", () => {
+	beforeEach(() => {
+		vi.mocked(axios.get).mockClear()
+	})
+
+	it("uses OpenAI v1 models endpoint when baseUrl is not configured", async () => {
+		const mockResponse = {
+			data: {
+				data: [{ id: "gpt-4o" }, { id: "new-response-model" }],
+			},
+		}
+		vi.mocked(axios.get).mockResolvedValueOnce(mockResponse)
+
+		const result = await getOpenAiNativeModels(undefined, "test-key")
+
+		expect(axios.get).toHaveBeenCalledWith(
+			"https://api.openai.com/v1/models",
+			expect.objectContaining({
+				headers: expect.objectContaining({
+					Authorization: "Bearer test-key",
+				}),
+			}),
+		)
+		expect(result).toEqual(["gpt-4o", "new-response-model"])
+	})
+
+	it("trims custom OpenAI Native base URL before requesting models", async () => {
+		const mockResponse = {
+			data: {
+				data: [{ id: "custom-model" }],
+			},
+		}
+		vi.mocked(axios.get).mockResolvedValueOnce(mockResponse)
+
+		const result = await getOpenAiNativeModels("  https://gateway.example.com/v1  ", "test-key")
+
+		expect(axios.get).toHaveBeenCalledWith("https://gateway.example.com/v1/models", expect.any(Object))
+		expect(result).toEqual(["custom-model"])
 	})
 })

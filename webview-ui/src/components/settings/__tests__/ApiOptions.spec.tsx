@@ -296,6 +296,27 @@ describe("ApiOptions", () => {
 		expect(mockSetApiConfigurationField).toHaveBeenCalledWith("apiModelId", openAiCodexDefaultModelId, false)
 	})
 
+	it("does not reset OpenAI Native dynamic model IDs when switching providers", () => {
+		const mockSetApiConfigurationField = vi.fn()
+
+		renderApiOptions({
+			apiConfiguration: {
+				apiProvider: "anthropic",
+				apiModelId: "new-response-model",
+			},
+			setApiConfigurationField: mockSetApiConfigurationField,
+		})
+		mockSetApiConfigurationField.mockClear()
+
+		const providerSelectContainer = screen.getByTestId("provider-select")
+		const providerSelect = providerSelectContainer.querySelector("select") as HTMLSelectElement
+
+		fireEvent.change(providerSelect, { target: { value: "openai-native" } })
+
+		expect(mockSetApiConfigurationField).toHaveBeenCalledWith("apiProvider", "openai-native")
+		expect(mockSetApiConfigurationField).not.toHaveBeenCalledWith("apiModelId", expect.any(String), false)
+	})
+
 	it("shows temperature and rate limit controls by default", () => {
 		renderApiOptions({
 			apiConfiguration: {},

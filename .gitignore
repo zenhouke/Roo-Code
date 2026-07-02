@@ -54,4 +54,6 @@ qdrant_storage/
 # Architect plans
 plans/
 
+.codegraph/
+
 roo-cli-*.tar.gz*

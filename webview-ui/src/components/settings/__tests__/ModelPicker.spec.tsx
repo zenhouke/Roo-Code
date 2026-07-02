@@ -145,6 +145,36 @@ describe("ModelPicker", () => {
 		expect(mockSetApiConfigurationField).toHaveBeenCalledWith(defaultProps.modelIdKey, customModelId)
 	})
 
+	it("hides the custom model option when custom models are disabled", async () => {
+		await act(async () => {
+			render(
+				<QueryClientProvider client={queryClient}>
+					<ModelPicker {...defaultProps} allowCustomModel={false} />
+				</QueryClientProvider>,
+			)
+		})
+
+		await act(async () => {
+			const button = screen.getByTestId("model-picker-button")
+			fireEvent.click(button)
+		})
+
+		await act(async () => {
+			vi.advanceTimersByTime(100)
+		})
+
+		await act(async () => {
+			const modelInput = screen.getByTestId("model-input")
+			fireEvent.input(modelInput, { target: { value: "unknown-model-id" } })
+		})
+
+		await act(async () => {
+			vi.advanceTimersByTime(100)
+		})
+
+		expect(screen.queryByTestId("use-custom-model")).not.toBeInTheDocument()
+	})
+
 	describe("Error Message Display", () => {
 		it("displays error message when errorMessage prop is provided", async () => {
 			const errorMessage = "Model not available for your organization"

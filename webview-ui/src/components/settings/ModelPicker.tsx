@@ -65,6 +65,8 @@ interface ModelPickerProps {
 	displayTransform?: (value: unknown) => string
 	/** Callback when model changes - useful for side effects like clearing related fields */
 	onModelChange?: (modelId: string) => void
+	/** Whether users can enter and select a model ID that is not in the model list */
+	allowCustomModel?: boolean
 }
 
 export const ModelPicker = ({
@@ -83,6 +85,7 @@ export const ModelPicker = ({
 	valueTransform,
 	displayTransform,
 	onModelChange,
+	allowCustomModel = true,
 }: ModelPickerProps) => {
 	const { t } = useAppTranslation()
 
@@ -269,7 +272,7 @@ export const ModelPicker = ({
 									))}
 								</CommandGroup>
 							</CommandList>
-							{searchValue && !modelIds.includes(searchValue) && (
+							{allowCustomModel && searchValue && !modelIds.includes(searchValue) && (
 								<div className="p-1 border-t border-vscode-input-border">
 									<CommandItem data-testid="use-custom-model" value={searchValue} onSelect={onSelect}>
 										{t("settings:modelPicker.useCustomModel", { modelId: searchValue })}

@@ -6,6 +6,7 @@ import OpenAI from "openai"
 import { Package } from "../../shared/package"
 import {
 	type ModelInfo,
+	openAiModelInfoSaneDefaults,
 	openAiNativeDefaultModelId,
 	OpenAiNativeModelId,
 	openAiNativeModels,
@@ -29,6 +30,11 @@ import { isMcpTool } from "../../utils/mcp-name"
 import { sanitizeOpenAiCallId } from "../../utils/tool-id"
 
 export type OpenAiNativeModel = ReturnType<OpenAiNativeHandler["getModel"]>
+
+const getCodexDesktopUserAgent = () => {
+	const arch = os.arch() === "x64" ? "x86_64" : os.arch()
+	return `Codex Desktop/0.142.5 (${os.platform() === "win32" ? "Windows" : os.platform()} ${os.release()}; ${arch}) unknown (Codex Desktop; 26.623.81905)`
+}
 
 export class OpenAiNativeHandler extends BaseProvider implements SingleCompletionHandler {
 	protected options: ApiHandlerOptions
@@ -340,7 +346,7 @@ export class OpenAiNativeHandler extends BaseProvider implements SingleCompletio
 		const body: ResponsesRequestBody = {
 			model: model.id,
 			input: formattedInput,
-			stream: true,
+			stream: this.options.openAiNativeStreamingEnabled ?? true,
 			// Always use stateless operation with encrypted reasoning
 			store: false,
 			// Always include instructions (system prompt) for Responses API.
@@ -363,7 +369,9 @@ export class OpenAiNativeHandler extends BaseProvider implements SingleCompletio
 			}),
 			// Explicitly include the calculated max output tokens.
 			// Use the per-request reserved output computed by Roo (params.maxTokens from getModelParams).
-			...(model.maxTokens ? { max_output_tokens: model.maxTokens } : {}),
+			...(this.options.includeMaxTokens !== false && model.maxTokens
+				? { max_output_tokens: model.maxTokens }
+				: {}),
 			// Include tier when selected and supported by the model, or when explicitly "default"
 			...(requestedTier &&
 				(requestedTier === "default" || allowedTierNames.has(requestedTier)) && {
@@ -401,6 +409,39 @@ export class OpenAiNativeHandler extends BaseProvider implements SingleCompletio
 		return body
 	}
 
+	private getResponsesApiUrl() {
+		const baseUrl = this.options.openAiNativeBaseUrl || "https://api.openai.com"
+		const normalizedBaseUrl = baseUrl.trim().replace(/\/+$/, "")
+		const v1BaseUrl = normalizedBaseUrl.endsWith("/v1") ? normalizedBaseUrl : `${normalizedBaseUrl}/v1`
+
+		return `${v1BaseUrl}/responses`
+	}
+
+	private getFetchHeaders(apiKey: string, metadata?: ApiHandlerCreateMessageMetadata): Record<string, string> {
+		if (this.options.openAiNativeBaseUrl) {
+			return {
+				"Content-Type": "application/json",
+				Accept: "text/event-stream",
+				Authorization: `Bearer ${apiKey}`,
+				"User-Agent": getCodexDesktopUserAgent(),
+				...(this.options.openAiNativeHeaders || {}),
+			}
+		}
+
+		const taskId = metadata?.taskId
+		const userAgent = `roo-code/${Package.version} (${os.platform()} ${os.release()}; ${os.arch()}) node/${process.version.slice(1)}`
+
+		return {
+			"Content-Type": "application/json",
+			Accept: "text/event-stream",
+			Authorization: `Bearer ${apiKey}`,
+			originator: "roo-code",
+			session_id: taskId || this.sessionId,
+			"User-Agent": userAgent,
+			...(this.options.openAiNativeHeaders || {}),
+		}
+	}
+
 	private async *executeRequest(
 		requestBody: any,
 		model: OpenAiNativeModel,
@@ -412,12 +453,16 @@ export class OpenAiNativeHandler extends BaseProvider implements SingleCompletio
 		this.abortController = new AbortController()
 
 		// Build per-request headers using taskId when available, falling back to sessionId
-		const taskId = metadata?.taskId
 		const userAgent = `roo-code/${Package.version} (${os.platform()} ${os.release()}; ${os.arch()}) node/${process.version.slice(1)}`
 		const requestHeaders: Record<string, string> = {
 			originator: "roo-code",
-			session_id: taskId || this.sessionId,
+			session_id: metadata?.taskId || this.sessionId,
 			"User-Agent": userAgent,
+		}
+
+		if (this.options.openAiNativeBaseUrl) {
+			yield* this.makeResponsesApiRequest(requestBody, model, metadata, systemPrompt, messages)
+			return
 		}
 
 		try {
@@ -553,26 +598,15 @@ export class OpenAiNativeHandler extends BaseProvider implements SingleCompletio
 		messages?: Anthropic.Messages.MessageParam[],
 	): ApiStream {
 		const apiKey = this.options.openAiNativeApiKey ?? "not-provided"
-		const baseUrl = this.options.openAiNativeBaseUrl || "https://api.openai.com"
-		const url = `${baseUrl}/v1/responses`
+		const url = this.getResponsesApiUrl()
 
 		// Create AbortController for cancellation
 		this.abortController = new AbortController()
 
-		// Build per-request headers using taskId when available, falling back to sessionId
-		const taskId = metadata?.taskId
-		const userAgent = `roo-code/${Package.version} (${os.platform()} ${os.release()}; ${os.arch()}) node/${process.version.slice(1)}`
-
 		try {
 			const response = await fetch(url, {
 				method: "POST",
-				headers: {
-					"Content-Type": "application/json",
-					Authorization: `Bearer ${apiKey}`,
-					originator: "roo-code",
-					session_id: taskId || this.sessionId,
-					"User-Agent": userAgent,
-				},
+				headers: this.getFetchHeaders(apiKey, metadata),
 				body: JSON.stringify(requestBody),
 				signal: this.abortController.signal,
 			})
@@ -1429,10 +1463,11 @@ export class OpenAiNativeHandler extends BaseProvider implements SingleCompletio
 	override getModel() {
 		const modelId = this.options.apiModelId
 
-		let id =
-			modelId && modelId in openAiNativeModels ? (modelId as OpenAiNativeModelId) : openAiNativeDefaultModelId
+		let id = modelId || openAiNativeDefaultModelId
 
-		const info: ModelInfo = openAiNativeModels[id]
+		const info: ModelInfo =
+			this.options.openAiNativeCustomModelInfo ??
+			(id in openAiNativeModels ? openAiNativeModels[id as OpenAiNativeModelId] : openAiModelInfoSaneDefaults)
 
 		const params = getModelParams({
 			format: "openai",
@@ -1523,7 +1558,7 @@ export class OpenAiNativeHandler extends BaseProvider implements SingleCompletio
 			}
 
 			// Include max_output_tokens if available
-			if (model.maxTokens) {
+			if (this.options.includeMaxTokens !== false && model.maxTokens) {
 				requestBody.max_output_tokens = model.maxTokens
 			}
 

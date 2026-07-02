@@ -144,6 +144,41 @@ describe("Vercel AI Gateway Fetchers", () => {
 			expect(models["anthropic/claude-sonnet-4"]).toBeDefined()
 			consoleErrorSpy.mockRestore()
 		})
+
+		it("uses default token limits when Vercel omits context_window and max_tokens", async () => {
+			const consoleErrorSpy = vitest.spyOn(console, "error").mockImplementation(() => {})
+			mockedAxios.get.mockResolvedValueOnce({
+				data: {
+					object: "list",
+					data: [
+						{
+							id: "openai/gpt-5.5",
+							object: "model",
+							created: 1640995200,
+							owned_by: "openai",
+							name: "GPT-5.5",
+							description: "GPT-5.5 model",
+							type: "language",
+							pricing: {
+								input: "2.00",
+								output: "8.00",
+							},
+						},
+					],
+				},
+			})
+
+			const models = await getVercelAiGatewayModels()
+
+			expect(consoleErrorSpy).not.toHaveBeenCalledWith(
+				expect.stringContaining("Vercel AI Gateway models response is invalid"),
+			)
+			expect(models["openai/gpt-5.5"]).toMatchObject({
+				maxTokens: 64000,
+				contextWindow: 200000,
+			})
+			consoleErrorSpy.mockRestore()
+		})
 	})
 
 	describe("parseVercelAiGatewayModel", () => {

@@ -231,6 +231,14 @@ const ApiOptions = ({
 						openAiHeaders: headerObject,
 					},
 				})
+			} else if (selectedProvider === "openai-native") {
+				vscode.postMessage({
+					type: "requestOpenAiNativeModels",
+					values: {
+						baseUrl: apiConfiguration?.openAiNativeBaseUrl,
+						apiKey: apiConfiguration?.openAiNativeApiKey,
+					},
+				})
 			} else if (selectedProvider === "ollama") {
 				vscode.postMessage({ type: "requestOllamaModels" })
 			} else if (selectedProvider === "lmstudio") {
@@ -247,6 +255,8 @@ const ApiOptions = ({
 			apiConfiguration?.requestyApiKey,
 			apiConfiguration?.openAiBaseUrl,
 			apiConfiguration?.openAiApiKey,
+			apiConfiguration?.openAiNativeBaseUrl,
+			apiConfiguration?.openAiNativeApiKey,
 			apiConfiguration?.ollamaBaseUrl,
 			apiConfiguration?.lmStudioBaseUrl,
 			apiConfiguration?.litellmBaseUrl,
@@ -304,6 +314,10 @@ const ApiOptions = ({
 				// newly selected provider).
 				//
 				// Note: We only validate providers with static model lists.
+				if (provider === "openai-native") {
+					return
+				}
+
 				const staticModels = MODELS_BY_PROVIDER[provider]
 				if (!staticModels) {
 					return
@@ -543,6 +557,8 @@ const ApiOptions = ({
 						<OpenAI
 							apiConfiguration={apiConfiguration}
 							setApiConfigurationField={setApiConfigurationField}
+							organizationAllowList={organizationAllowList}
+							modelValidationError={modelValidationError}
 							selectedModelInfo={selectedModelInfo}
 							simplifySettings={fromWelcomeView}
 						/>

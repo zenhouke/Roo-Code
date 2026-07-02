@@ -53,7 +53,7 @@ import { fileExistsAtPath } from "../../utils/fs"
 import { playTts, setTtsEnabled, setTtsSpeed, stopTts } from "../../utils/tts"
 import { searchCommits } from "../../utils/git"
 import { exportSettings, importSettingsWithFeedback } from "../config/importExport"
-import { getOpenAiModels } from "../../api/providers/openai"
+import { getOpenAiModels, getOpenAiNativeModels } from "../../api/providers/openai"
 import { getVsCodeLmModels } from "../../api/providers/vscode-lm"
 import { openMention } from "../mentions"
 import { resolveImageMentions } from "../mentions/resolveImageMentions"
@@ -1065,6 +1065,17 @@ export const webviewMessageHandler = async (provider: ClineProvider, message: We
 				)
 
 				provider.postMessageToWebview({ type: "openAiModels", openAiModels })
+			}
+
+			break
+		case "requestOpenAiNativeModels":
+			if (message?.values?.apiKey) {
+				const openAiNativeModels = await getOpenAiNativeModels(
+					message?.values?.baseUrl,
+					message?.values?.apiKey,
+				)
+
+				provider.postMessageToWebview({ type: "openAiNativeModels", openAiNativeModels })
 			}
 
 			break
